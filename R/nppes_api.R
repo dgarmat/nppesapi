@@ -142,3 +142,93 @@ npi_lookup <- function(npis, field = "specialty") {
   do.call(rbind, npilist)
   # note this will error out it any npi returned an error
 }
+
+
+#' NPPES API All
+#'
+#' Query the NPPES NPI registry with automatic handling of the 200 return limit. Combine results as if one query.
+#' The query limit limit is 200. This is overcome with skip = 200, etc. This does all that
+#'
+#' @param query Character string representing a valid query.
+#' @param limit If want to limit rows, can, rather than loop for a long time. Default is 1000.
+#' If want all, set limit = 100000000. But it is about 10KB per entry. So the absolute max
+#' would be 100,000 providers per GB of ram.
+#'
+#' @return An object of class \code{"nppes_api"}; essentially, an R list with
+#' various components depending on the submitted query.
+#'
+#' @rdname nppes_api_all
+#'
+#' @export
+#'
+#' @examples
+#' dayton_providers <- nppes_api_all("city=dayton")
+#' length(dayton_providers$content)
+#'
+#' # note the query can stop early
+#' # Are there over 1000 plastic surgeons in Beverley Hills, 90210?
+#' plastic_90210 <- nppes_api_all("postal_code=90210&taxonomy_description=PLASTIC+SURGERY", limit = 1000, verbose = TRUE)
+#' length(plastic_90210$content)
+#' # Nope, fewer than 100 in that zip code. May be some untapped market.
+#'
+
+nppes_api_all <- function(query, limit = 10000, verbose = FALSE) {
+  # limit is supposed to be an integer, so should have an L after it, but that's not known by everyone
+  # and don't want to confuse new users
+
+  # if limit is not an number, return an error. Does this handle negative ints? Or 0?
+  if(!is.numeric(limit)){
+    stop(paste0("limit must be a number. Entered ", limit))
+  }
+
+  if(limit <= 0){
+    stop(paste0("limit must be a positive numbner. Entered ", limit))
+  }
+
+  if(!is.integer(limit)){
+    if(limit - floor(limit) > 0){ # this seems kind of a messy test for an integer
+      warning(paste0("removing decimals from limit given, ", limit))
+    }
+    limit <- as.integer(limit)
+  }
+
+  # how many cycles to run max?
+  cycles <- ceiling(limit / 200)
+  remaining_providers <- limit
+  full_query <- list()
+
+  # could do parralell probably
+  # start with a for loop, but lapply would make more sense
+  for(cycle in seq(1, cycles)){
+    if(remaining_providers > 0){ # this seems kind of a messy test for continuing
+      result <- tryCatch(nppes_api(paste0(query, "&skip=", ((cycle - 1) * 200), "&limit=200")),
+               error = function(err){
+                 # handle Server returned nothing errors
+                 print(paste0("Error from nppes_api: ", err, ". Skipping cycle ", cycle))
+               }
+      )
+      if(length(result$content$results) == 200){
+        # have not run out
+        remaining_providers <- remaining_providers - length(result$content$results)
+      } else{
+        # have run out
+        remaining_providers <- 0
+      }
+      full_query <- c(full_query, result$content$results)
+      if(verbose){
+        print(paste0(round((remaining_providers / limit), 2) * 100, " percent remaining, at maximum"))
+        print(paste0(cycle, " / ", cycles, " API queries ran"))
+      }
+    }
+  }
+
+  # Return an nppes_api object (a list)
+  structure(
+    list(
+      "content" = full_query,     # this is all results appended
+      "query" = query,            # this is not replicatable
+      "response" = result$resp    # this is the last query ran
+    ),
+    class = "nppes_api"
+  )
+}

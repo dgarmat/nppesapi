@@ -57,3 +57,37 @@ table(unlist(npilist))  # hope to see 5 !!
 
 ```
 
+
+Say you want your to return more than 200 numbers. `nppes_api_all` stitches together as many API calls as it takes to return everything that matches your query. Just set the limit very high and let it run.
+
+For example, how many naturopaths have an office in Portland, Oregon?
+
+```{r advanced4}
+naturopaths_portland <- nppes_api_all("city=PORTLAND&state=OR&taxonomy_description=NATUROPATH", limit = 100000, verbose = TRUE)
+length(naturopaths_portland$content)
+```
+
+Looks like fewer than expected. How many Naturopaths are there in the world? Each NPI takes up about 10 KB, so the absolute max to consider is 100,000 per MB of ram. This code block takes a while to run. 
+
+```{r advanced5}
+naturopaths_all <- nppes_api_all("taxonomy_description=NATUROPATH", limit = 800000, verbose = FALSE)
+length(naturopaths_all$content)
+```
+
+Turns out the API gave up at 100,000. At a 30 minute query, this may be past the point at which it's better to [download the monthly file](http://download.cms.gov/nppes/NPI_Files.html) but it attemps to show the limits of what could be done.
+
+Now that we have a not-so-random-sample downloaded in a 1 GB nppes_api object, what zip code has the most Naturopaths? 
+
+```{r advanced5}
+# extract the zip codes repeating the above method
+getzip <- function(x){
+  substr(naturopaths_all$content[[x]]$addresses[[1]]$postal_code, 1, 5)
+}
+natvec <- unlist(lapply(seq(1:length(naturopaths_all$content)), getzip)) # get the NPI number
+#query3 <- (paste0("number=",natvec))
+#natnpilist <- lapply(query3, npi_to_zip)
+sort(table(natvec))
+```
+
+Apparently North Scottsdale, AZ [85260](https://www.zillow.com/scottsdale-az-85260/) has the Naturopath epicenter. It's by so much, not sure it's believeable. Seattle, however has number 2, 3 and 4 in zip codes 98105, 98115, and 98125. Rounding out number 5, we have Corvallis, OR, home of [Oregon State University Statistics Department](http://stat.oregonstate.edu/). You have to get to the sixth zip code to get to Portland, with [97213](https://www.zillow.com/portland-or-97213/).
+
